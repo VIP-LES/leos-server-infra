@@ -1,0 +1,11 @@
+users:
+  - name: leos-admin
+    groups: ["wheel", "docker", "leos"]
+    ssh_keys:
+      - "{{ lookup('file', 'keys/mlyon31-framework.pub') }}"
+      - "{{ lookup('file', 'keys/bregmi8.pub') }}"
+  - name: leos
+    groups: ["docker"]
+    ssh_keys:
+      - "{{ lookup('file', 'keys/mlyon31-framework.pub') }}"
+      - "{{ lookup('file', 'keys/bregmi8.pub') }}"

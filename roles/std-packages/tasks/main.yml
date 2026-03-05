@@ -1,0 +1,15 @@
+- name: Install base packages
+  apt:
+      name:
+        - htop
+        - curl
+        - git
+        - vim
+        - nano
+        - sudo
+        - openssh-server
+        - tree
+        - fastfetch
+        - acl
+      state: present
+      update_cache: true
