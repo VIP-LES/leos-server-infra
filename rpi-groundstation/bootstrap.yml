@@ -1,0 +1,263 @@
+# first run: ansible-playbook -i inventory.yml bootstrap.yml --ask-pass --ask-become-pass
+
+- name: Bootstrap RPI - pre-sudo setup
+  hosts: all
+  become_method: ansible.builtin.su
+  become_user: root
+  become: true
+  tasks:
+    - name: Install sudo
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+
+    - name: Add user to sudo group
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: sudo
+        append: true
+    - name: Reset connection so sudo is available in PATH
+      ansible.builtin.meta: reset_connection
+
+- name: Bootstrap RPI
+  hosts: all
+  become_method: ansible.builtin.sudo
+  vars_files:
+    - vars/secrets.yml
+  tasks:
+    - name: Install base packages
+      become: true
+      ansible.builtin.apt:
+        name:
+          - htop
+          - curl
+          - git
+          - vim
+          - nano
+          - sudo
+          - fastfetch
+          - python3-pip
+          - ca-certificates
+          - gnupg
+          - systemd-timesyncd
+          - build-essential
+          - openssh-server
+          - python3-venv
+          - avahi-daemon
+          - network-manager
+        state: present
+        update_cache: true
+        lock_timeout: 300
+
+    - name: Generate locales
+      become: true
+      community.general.locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Set default locale
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/default/locale
+        regexp: "^{{ item.key }}"
+        line: "{{ item.key }}=en_US.UTF-8"
+        create: true
+        mode: "0644"
+      loop:
+        - { key: LANG }
+        - { key: LC_ALL }
+        - { key: LANGUAGE }
+
+    - name: Ensure .ssh directory exists
+      become: true
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/.ssh"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: Add multiple authorized SSH keys
+      become: true
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ item }}"
+        state: present
+      loop: "{{ authorized_keys }}"
+
+    - name: Enable OpenSSH
+      become: true
+      ansible.builtin.systemd:
+        name: ssh
+        enabled: true
+        state: started
+
+    - name: Permit Root Login via SSH
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^(#\s*)?PermitRootLogin'
+        line: 'PermitRootLogin yes'
+
+    - name: Restart SSH service
+      become: true
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    - name: Enable time synchronization
+      become: true
+      ansible.builtin.systemd:
+        name: systemd-timesyncd
+        enabled: true
+        state: started
+
+    - name: Set hostname
+      become: true
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Update /etc/hosts
+      become: true
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1\t{{ inventory_hostname }}.local\t{{ inventory_hostname }}"
+
+    - name: Enable Avahi Daemon
+      become: true
+      ansible.builtin.systemd:
+        name: avahi-daemon
+        enabled: true
+        state: started
+
+    - name: Restart avahi-daemon
+      become: true
+      ansible.builtin.systemd:
+        name: avahi-daemon
+        state: restarted
+
+    - name: Enable USB serial console
+      become: true
+      ansible.builtin.systemd:
+        name: getty@ttyGS0
+        enabled: true
+        state: started
+
+    - name: Install NVM via script
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+      args:
+        creates: "/home/{{ ansible_user }}/.nvm/nvm.sh"
+      environment:
+        HOME: "/home/{{ ansible_user }}"
+        USER: "{{ ansible_user }}"
+      become: false
+
+    - name: Add NVM to bashrc
+      ansible.builtin.lineinfile:
+        path: "/home/{{ ansible_user }}/.bashrc"
+        regexp: "^export NVM_DIR="
+        line: 'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"'
+        create: true
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Install Node 24
+      ansible.builtin.shell: |
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        nvm install 24
+      args:
+        executable: /bin/bash
+        creates: "/home/{{ ansible_user }}/.nvm/versions/node"
+
+    - name: Clone git repository
+      ansible.builtin.git:
+        repo: https://github.com/VIP-LES/leos-S26-ground-station
+        dest: "/home/{{ ansible_user }}/leos-S26-ground-station"
+        version: main
+        update: true
+
+    - name: Create Python virtualenv
+      ansible.builtin.command:
+        cmd: python3 -m venv /home/{{ ansible_user }}/venv
+        creates: "/home/{{ ansible_user }}/venv/bin/pip"
+
+    - name: Install Python dependencies
+      ansible.builtin.command:
+        cmd: "/home/{{ ansible_user }}/venv/bin/pip install -r /home/{{ ansible_user }}/leos-S26-ground-station/requirements.txt"
+      register: pip_result
+      changed_when: "'Successfully installed' in pip_result.stdout"
+
+    - name: Activate venv in bashrc
+      ansible.builtin.lineinfile:
+        path: "/home/{{ ansible_user }}/.bashrc"
+        line: 'source "$HOME/venv/bin/activate"'
+        create: true
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Configure wpa_supplicant for faster scanning
+      become: true
+      ansible.builtin.blockinfile:
+        path: /etc/wpa_supplicant/wpa_supplicant.conf
+        create: true
+        owner: root
+        group: root
+        mode: "0600"
+        block: |
+            ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+            update_config=1
+            fast_reauth=1
+            bss_expiration_age=10
+            bss_expiration_scan_count=2
+
+    - name: Configure networkd to not cache BSSID
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/systemd/network/10-wlan0.network
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Match]
+          Name=wlan0
+
+          [Network]
+          DHCP=yes
+
+          [DHCP]
+          RouteMetric=20
+
+          [Link]
+          RequiredForOnline=no
+
+    - name: Restart wpa_supplicant
+      become: true
+      ansible.builtin.systemd:
+        name: wpa_supplicant
+        state: restarted
+
+    - name: Configure NetworkManager WiFi scanning tweaks
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/NetworkManager/conf.d/wifi-scan.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [device]
+          wifi.scan-rand-mac-address=no
+
+          [connection]
+          wifi.cloned-mac-address=preserve
+
+    - name: Reload NetworkManager
+      become: true
+      ansible.builtin.systemd:
+        name: NetworkManager
+        state: reloaded

@@ -1,0 +1,5 @@
+rpis:
+  hosts:
+    groundstation1:
+      ansible_host: groundstation1
+      ansible_user: pi
