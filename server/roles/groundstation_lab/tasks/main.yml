@@ -1,0 +1,57 @@
+- name: Install lab host Python dependencies
+  apt:
+    name:
+      - python3-venv
+      - python3-pip
+    state: present
+    update_cache: true
+
+- name: Clone ground-station repository for lab host
+  become_user: "{{ groundstation_lab_user | default('leos') }}"
+  git:
+    repo: "{{ groundstation_app_repo | default('https://github.com/VIP-LES/leos-S26-ground-station') }}"
+    dest: "{{ groundstation_app_dest | default('/home/leos/leos-S26-ground-station') }}"
+    version: "{{ groundstation_app_version | default('dev') }}"
+    update: true
+
+- name: Create lab host virtualenv
+  become_user: "{{ groundstation_lab_user | default('leos') }}"
+  command:
+    cmd: "python3 -m venv {{ groundstation_venv_path | default('/home/leos/venv') }}"
+    creates: "{{ groundstation_venv_path | default('/home/leos/venv') }}/bin/pip"
+
+- name: Install lab host Python requirements
+  become_user: "{{ groundstation_lab_user | default('leos') }}"
+  command:
+    cmd: "{{ groundstation_venv_path | default('/home/leos/venv') }}/bin/pip install -r {{ groundstation_app_dest | default('/home/leos/leos-S26-ground-station') }}/requirements.txt"
+
+- name: Template lab .env
+  template:
+    src: groundstation.env.j2
+    dest: "{{ groundstation_app_dest | default('/home/leos/leos-S26-ground-station') }}/.env"
+    owner: "{{ groundstation_lab_user | default('leos') }}"
+    group: "{{ groundstation_lab_user | default('leos') }}"
+    mode: "0644"
+
+- name: Start lab docker-compose services
+  command:
+    cmd: docker-compose up -d
+    chdir: "{{ groundstation_app_dest | default('/home/leos/leos-S26-ground-station') }}"
+
+- name: Install lab ingest systemd service
+  template:
+    src: leos-ingest.service.j2
+    dest: /etc/systemd/system/leos-ingest.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd for lab ingest service
+  systemd:
+    daemon_reload: true
+
+- name: Enable and start lab ingest service
+  systemd:
+    name: leos-ingest.service
+    enabled: true
+    state: started

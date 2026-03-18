@@ -1,0 +1,15 @@
+[Unit]
+Description=LEOS Ground Station Pi Forwarder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+WorkingDirectory=/home/{{ ansible_user }}/leos-S26-ground-station
+ExecStart=/home/{{ ansible_user }}/venv/bin/python index.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

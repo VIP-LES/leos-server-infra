@@ -1,0 +1,15 @@
+[Unit]
+Description=LEOS Ground Station Ingest API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ groundstation_lab_user | default('leos') }}
+WorkingDirectory={{ groundstation_app_dest | default('/home/leos/leos-S26-ground-station') }}
+ExecStart={{ groundstation_venv_path | default('/home/leos/venv') }}/bin/python index.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

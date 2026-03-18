@@ -49,6 +49,15 @@
         update_cache: true
         lock_timeout: 300
 
+    - name: Install Tailscale via official script
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        executable: /bin/bash
+        creates: /usr/bin/tailscale
+      become: true
+
     - name: Generate locales
       become: true
       community.general.locale_gen:
@@ -91,6 +100,25 @@
         name: ssh
         enabled: true
         state: started
+
+    - name: Enable tailscaled
+      become: true
+      ansible.builtin.systemd:
+        name: tailscaled
+        enabled: true
+        state: started
+
+    - name: Bring Pi onto Tailscale
+      become: true
+      ansible.builtin.command:
+        cmd: >-
+          tailscale up
+          --hostname={{ tailscale_hostname | default(inventory_hostname) }}
+          {% if tailscale_ssh | default(true) %}--ssh{% endif %}
+          --authkey={{ tailscale_authkey }}
+      when:
+        - tailscale_authkey is defined
+        - tailscale_authkey | length > 0
 
     - name: Permit Root Login via SSH
       become: true
@@ -178,7 +206,7 @@
       ansible.builtin.git:
         repo: https://github.com/VIP-LES/leos-S26-ground-station
         dest: "/home/{{ ansible_user }}/leos-S26-ground-station"
-        version: main
+        version: dev
         update: true
 
     - name: Create Python virtualenv
@@ -200,6 +228,44 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: "0644"
+
+    - name: Ensure Pi spool directory exists
+      become: true
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/leos-state"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Template Pi .env
+      ansible.builtin.template:
+        src: templates/pi.env.j2
+        dest: "/home/{{ ansible_user }}/leos-S26-ground-station/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    - name: Install Pi forwarder systemd service
+      become: true
+      ansible.builtin.template:
+        src: templates/leos-forwarder.service.j2
+        dest: /etc/systemd/system/leos-forwarder.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Reload systemd on Pi
+      become: true
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start Pi forwarder service
+      become: true
+      ansible.builtin.systemd:
+        name: leos-forwarder.service
+        enabled: true
+        state: started
 
     - name: Configure wpa_supplicant for faster scanning
       become: true
