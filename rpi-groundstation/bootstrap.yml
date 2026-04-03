@@ -34,15 +34,18 @@
           - htop
           - curl
           - git
+          - make
           - vim
           - nano
           - sudo
           - fastfetch
           - python3-pip
+          - pkg-config
           - ca-certificates
           - gnupg
           - systemd-timesyncd
           - build-essential
+          - libgpiod-dev
           - openssh-server
           - python3-venv
           - avahi-daemon
@@ -171,6 +174,12 @@
         dest: "/home/{{ ansible_user }}/leos-S26-ground-station"
         version: dev
         update: true
+        recursive: true
+
+    - name: Build native radio receiver
+      ansible.builtin.command:
+        cmd: make
+        chdir: "/home/{{ ansible_user }}/leos-S26-ground-station/native"
 
     - name: Create Python virtualenv
       ansible.builtin.command:

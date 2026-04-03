@@ -52,6 +52,8 @@ dependencies.
 It now also:
 
 - checks out the `dev` branch of `leos-S26-ground-station`
+- initializes the repo submodules
+- builds the native receiver in `native/`
 - creates a persistent spool directory
 - templates a Pi-specific `.env`
 - installs `leos-forwarder.service`
@@ -95,13 +97,17 @@ which is used as the default host part of the Pi `INGEST_URL`.
 
 For test deployments, the Pi path also supports:
 
-- `groundstation_fake_radio_enabled`
-- `groundstation_fake_radio_input_path`
-- `groundstation_fake_radio_repeat`
-- `groundstation_fake_radio_interval_s`
+- `groundstation_radio_source`
+- `groundstation_replay_radio_input_path`
+- `groundstation_replay_radio_repeat`
+- `groundstation_replay_radio_interval_s`
+- `groundstation_radio_socket_path`
+- `groundstation_radio_receiver_bin`
+- `groundstation_radio_receiver_autostart`
 
-When enabled, the Pi deployment can point at the built-in fake telemetry input
-fixture from the application repo.
+When configured for replay mode, the Pi deployment can point at the built-in
+telemetry replay fixture from the application repo. When configured for native
+mode, the Pi deployment will build and run the native SX126x receiver process.
 
 Important operational note:
 
@@ -148,7 +154,8 @@ This infra branch is designed specifically around the corresponding
 - two hypertables
 - the SQLite queue
 - the forwarder
-- the fake/replay telemetry path
+- the replay telemetry path
+- the native SX126x receiver path
 
 Without those application changes, the deployment changes in this repo do not
 fully make sense on their own.
@@ -157,8 +164,6 @@ fully make sense on their own.
 
 These are the main remaining assumptions that are not yet fully automated:
 
-- the real Pi `radio_receiver.py` does not exist yet, so Pi mode is currently a
-  forwarder plus optional fake/replay source
 - the very first Pi bootstrapping step may still require cloud-init assistance
   when local networking conditions make initial SSH access unreliable
 
