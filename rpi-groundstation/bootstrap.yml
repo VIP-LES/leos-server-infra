@@ -172,7 +172,7 @@
       ansible.builtin.git:
         repo: https://github.com/VIP-LES/leos-S26-ground-station
         dest: "/home/{{ ansible_user }}/leos-S26-ground-station"
-        version: dev
+        version: "{{ groundstation_app_version | default('dev') }}"
         update: true
         recursive: true
 
