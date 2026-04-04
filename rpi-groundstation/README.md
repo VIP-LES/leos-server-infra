@@ -21,6 +21,9 @@
 
 5. For the native SX126x path, set:
    - `groundstation_radio_source: native`
+   - `groundstation_app_version: telemetry-test` for the current basic telemetry-only branch
+   - `groundstation_pi_local_only: true` to keep telemetry on the Pi in local SQLite
+   - `groundstation_radio_enabled: sx1262` for the SX1262-only preliminary test
    - optionally override:
      - `groundstation_radio_socket_path`
      - `groundstation_radio_receiver_bin`
