@@ -1,5 +1,5 @@
 servers:
   hosts:
     leos-main:
-      ansible_host: fe80::a00:27ff:fe4d:7617%vboxnet0
+      ansible_host: leos.lyon.systems
       ansible_user: leos-admin
