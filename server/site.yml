@@ -1,12 +1,16 @@
 - hosts: servers
   become: true
+  vars_files:
+    - vars/secrets.yml
 
   roles:
     - { role: users, tags: users }
     - { role: ssh, tags: ssh }
     - { role: firewall, tags: firewall }
+    - { role: tailscale, tags: tailscale }
     - { role: docker, tags: docker }
     - { role: std-packages, tags: pkg }
+    - { role: groundstation_lab, tags: groundstation }
     - { role: unattended_upgrades, tags: pkg }
     - motd
     - timesync

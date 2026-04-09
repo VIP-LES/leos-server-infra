@@ -1,14 +1,30 @@
-1. apple hotspot doesnt support mDNS (so can't use .local address). It also isolates devices on the hotspot network, so they can't talk to each other. This makes it impossible to connect to the RPi via its local IP address when using the apple hotspot.
-   - solution: Use RPI Flasher to configure a network for the RPi that it will connect to on first boot. After flashing, insert the SD card to a computer and paste the following to install tailscale on the RPI at the end of the ``user-data`` file, at the end of the file in the bootfs partition. Make sure to change the hostname and authkey to your own values. The authkey can be generated from the Tailscale admin console. With this configuration, on first boot, the RPI will connect to the configured wifi network, install tailscale, and connect to the tailscale network with the specified hostname and authkey: 
-```yaml
-runcmd:
-  - [ sh, -c, curl -fsSL https://tailscale.com/install.sh | sh ]
-  - [ sh, -c, sudo hostnamectl hostname YOUR_HOSTNAME_HERE ]
-  - [ tailscale, up, --ssh, --hostname=YOUR_HOSTNAME_HERE, --authkey=tskey-auth-KEY_HERE ]
-```
- This allows for bypassing the apple hotspot's limitations (or other possible network limitations) and still being able to connect to the RPI remotely. **Even if you don't use apple hostpot** (i.e. you use an android/windows device's hotspot) this is still necessary to allow for remote access to the RPI without needing to know its local IP address or needing to connect from a different network.
+1. Apple hotspot still does not support mDNS and still isolates devices on the hotspot network, so local addressing remains unreliable for the Pi in that scenario.
+   - first-boot solution: configure a normal Wi-Fi network for first boot and, when initial SSH reachability is uncertain, use Raspberry Pi cloud-init / `user-data` to install and join Tailscale before Ansible is involved
+   - ongoing solution: after the Pi is reachable, let the Ansible bootstrap playbook install and manage Tailscale using the values in `vars/secrets.yml`
+   - required variables now include:
+     - `tailscale_authkey`
+     - `tailscale_hostname`
+     - optionally `tailscale_ssh`
+     - `tailscale_lab_host` for the lab host name the Pi should forward to
+     - `groundstation_radio_source` if you want the Pi to use either replay input or the native receiver
+   - this still allows bypassing hotspot limitations and gives the Pi a stable remote path to the lab host
 
 2. SSH into it and change the root password. This is required to use Ansible's become method with sudo.
 
-3. Run the bootstrap playbook to set up tailscale and clone the git repository with the rest of the ansible code. This will allow for remote access to the RPI via tailscale and also set up the necessary files for running the rest of the ansible playbooks.
+3. Run the bootstrap playbook after first-boot reachability is established. It will install/join Tailscale, clone the ground-station repo with submodules, build the native receiver, write the Pi `.env`, and install the Pi forwarder service.
     - first run: ansible-playbook -i inventory.yml bootstrap.yml --ask-pass --ask-become-pass
+
+4. For a same-day end-to-end test without radio hardware, set:
+   - `groundstation_radio_source: replay`
+   - optionally adjust `groundstation_replay_radio_repeat` and `groundstation_replay_radio_interval_s`
+   - by default the replay source will read `/home/pi/leos-S26-ground-station/testdata/fake_radio_input.jsonl`
+
+5. For the native SX126x path, set:
+   - `groundstation_radio_source: native`
+   - `groundstation_app_version: telemetry-test` for the current basic telemetry-only branch
+   - `groundstation_pi_local_only: true` to keep telemetry on the Pi in local SQLite
+   - `groundstation_radio_enabled: sx1262` for the SX1262-only preliminary test
+   - optionally override:
+     - `groundstation_radio_socket_path`
+     - `groundstation_radio_receiver_bin`
+     - `groundstation_radio_receiver_autostart`

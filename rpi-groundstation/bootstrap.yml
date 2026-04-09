@@ -4,6 +4,7 @@
   hosts: all
   become_method: ansible.builtin.su
   become_user: root
+  gather_facts: false
   become: true
   tasks:
     - name: Install sudo
@@ -21,6 +22,7 @@
 
 - name: Bootstrap RPI
   hosts: all
+  gather_facts: false
   become_method: ansible.builtin.sudo
   vars:
     can_spi: 0
@@ -40,15 +42,18 @@
           - htop
           - curl
           - git
+          - make
           - vim
           - nano
           - sudo
           - fastfetch
           - python3-pip
+          - pkg-config
           - ca-certificates
           - gnupg
           - systemd-timesyncd
           - build-essential
+          - libgpiod-dev
           - openssh-server
           - python3-venv
           - avahi-daemon
@@ -126,11 +131,6 @@
         enabled: true
         state: started
 
-    - name: Set hostname
-      become: true
-      ansible.builtin.hostname:
-        name: "{{ inventory_hostname }}"
-
     - name: Update /etc/hosts
       become: true
       ansible.builtin.lineinfile:
@@ -144,12 +144,6 @@
         name: avahi-daemon
         enabled: true
         state: started
-
-    - name: Restart avahi-daemon
-      become: true
-      ansible.builtin.systemd:
-        name: avahi-daemon
-        state: restarted
 
     - name: Enable USB serial console
       become: true
@@ -192,8 +186,14 @@
       ansible.builtin.git:
         repo: https://github.com/VIP-LES/leos-S26-ground-station
         dest: "/home/{{ ansible_user }}/leos-S26-ground-station"
-        version: main
+        version: "{{ groundstation_app_version | default('dev') }}"
         update: true
+        recursive: true
+
+    - name: Build native radio receiver
+      ansible.builtin.command:
+        cmd: make
+        chdir: "/home/{{ ansible_user }}/leos-S26-ground-station/native"
 
     - name: Create Python virtualenv
       ansible.builtin.command:
@@ -214,6 +214,44 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: "0644"
+
+    - name: Ensure Pi spool directory exists
+      become: true
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/leos-state"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Template Pi .env
+      ansible.builtin.template:
+        src: templates/pi.env.j2
+        dest: "/home/{{ ansible_user }}/leos-S26-ground-station/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    # - name: Install Pi forwarder systemd service
+    #   become: true
+    #   ansible.builtin.template:
+    #     src: templates/leos-forwarder.service.j2
+    #     dest: /etc/systemd/system/leos-forwarder.service
+    #     owner: root
+    #     group: root
+    #     mode: "0644"
+
+    - name: Reload systemd on Pi
+      become: true
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    # - name: Enable and start Pi forwarder service
+    #   become: true
+    #   ansible.builtin.systemd:
+    #     name: leos-forwarder.service
+    #     enabled: true
+    #     state: started
 
     - name: Configure wpa_supplicant for faster scanning
       become: true
@@ -275,3 +313,54 @@
       ansible.builtin.systemd:
         name: NetworkManager
         state: reloaded
+    
+    - name: Install PM2
+      ansible.builtin.shell: |
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        npm install -g pm2
+      args:
+        executable: /bin/bash
+        creates: "/home/{{ ansible_user }}/.nvm/versions/node/v24*/bin/pm2"
+      become: false
+    
+    - name: Get pm2 startup command
+      ansible.builtin.shell: |
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        pm2 startup systemd -u {{ ansible_user }} --hp /home/{{ ansible_user }}
+      args:
+        executable: /bin/bash
+      become: false
+      register: pm2_startup_output
+      changed_when: false
+      failed_when: false
+
+    - name: Run pm2 startup command
+      ansible.builtin.shell:
+        cmd: "{{ pm2_startup_output.stdout_lines | select('match', '^sudo env PATH') | first }}"
+      become: true
+      args:
+        executable: /bin/bash
+
+    - name: Start forwarder via PM2
+      ansible.builtin.shell: |
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        pm2 start /home/{{ ansible_user }}/leos-S26-ground-station/index.py \
+          --name leos-forwarder \
+          --interpreter /home/{{ ansible_user }}/venv/bin/python
+      args:
+        executable: /bin/bash
+      become: false
+      changed_when: false
+
+    - name: Save PM2 process list
+      ansible.builtin.shell: |
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+        pm2 save
+      args:
+        executable: /bin/bash
+      become: false
+      changed_when: false
