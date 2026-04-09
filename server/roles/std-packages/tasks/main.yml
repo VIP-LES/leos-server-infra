@@ -11,5 +11,7 @@
         - tree
         - fastfetch
         - acl
+        - systemd-resolved
+        - bind9-dnsutils
       state: present
       update_cache: true
