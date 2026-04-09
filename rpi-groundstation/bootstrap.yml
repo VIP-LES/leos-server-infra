@@ -22,6 +22,14 @@
 - name: Bootstrap RPI
   hosts: all
   become_method: ansible.builtin.sudo
+  vars:
+    can_spi: 0
+    can_cs: 0
+    can_int: 25
+    can_osc: 40000000
+    can_bitrate: 1000000
+    can_dbitrate: 4000000
+    can_fd: true
   vars_files:
     - vars/secrets.yml
   tasks:
@@ -67,6 +75,10 @@
         - { key: LANG }
         - { key: LC_ALL }
         - { key: LANGUAGE }
+
+    - name: Configure MCP2518FD CANBus
+      include_role:
+        name: rpi_canbus
 
     - name: Ensure .ssh directory exists
       become: true

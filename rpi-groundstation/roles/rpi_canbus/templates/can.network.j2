@@ -1,0 +1,14 @@
+# This file is managed by Ansible. DO NOT EDIT MANUALLY.
+
+[Match]
+Name={{ can_interface }}
+
+[CAN]
+BitRate={{ can_bitrate }}
+{% if can_fd | default(false) %}
+DBitrate={{ can_dbitrate }}
+FDMode=true
+{% else %}
+FDMode=false
+{% endif %}
+RestartSec=10s

@@ -1,0 +1,26 @@
+- name: Enable SPI interfaces
+  lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^dtparam=spi=on'
+    line: 'dtparam=spi=on'
+    insertafter: EOF
+
+- name: Add MCP251x overlay
+  lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^dtoverlay=mcp251xfd'
+    line: "dtoverlay=mcp251xfd,spi{{ can_spi }}-{{ can_cs }},oscillator={{ can_osc }},interrupt={{ can_int }}"
+    insertafter: EOF
+
+- name: Install can0 network config
+  template:
+    src: can.network.j2
+    dest: "/etc/systemd/network/50-{{ can_interface }}.network"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable systemd-networkd
+  systemd:
+    name: systemd-networkd
+    enabled: true

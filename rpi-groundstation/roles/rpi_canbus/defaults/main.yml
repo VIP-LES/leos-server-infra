@@ -1,0 +1,8 @@
+can_interface: "can0"
+can_spi: 0
+can_cs: 0
+can_int: 25
+can_osc: 40000000
+can_bitrate: 1000000
+can_dbitrate: 4000000
+can_fd: true
